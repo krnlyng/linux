@@ -26,6 +26,7 @@
 #include <linux/userfaultfd_k.h>
 #include <linux/mempolicy.h>
 #include <linux/pgalloc.h>
+#include <linux/page_size_compat.h>
 
 #include <asm/cacheflush.h>
 #include <asm/tlb.h>
@@ -1834,7 +1835,7 @@ static unsigned long check_mremap_params(struct vma_remap_struct *vrm)
 		return -EINVAL;
 
 	/* Start address must be page-aligned. */
-	if (offset_in_page(addr))
+	if (__offset_in_page_log(addr))
 		return -EINVAL;
 
 	/*
@@ -1858,7 +1859,7 @@ static unsigned long check_mremap_params(struct vma_remap_struct *vrm)
 		return -EINVAL;
 
 	/* The new address must be page-aligned. */
-	if (offset_in_page(vrm->new_addr))
+	if (__offset_in_page(vrm->new_addr))
 		return -EINVAL;
 
 	/* A fixed address implies a move. */
@@ -1971,8 +1972,8 @@ static unsigned long do_mremap(struct vma_remap_struct *vrm)
 	unsigned long res;
 	bool failed;
 
-	vrm->old_len = PAGE_ALIGN(vrm->old_len);
-	vrm->new_len = PAGE_ALIGN(vrm->new_len);
+	vrm->old_len = __PAGE_ALIGN(vrm->old_len);
+	vrm->new_len = __PAGE_ALIGN(vrm->new_len);
 
 	res = check_mremap_params(vrm);
 	if (res)
