@@ -5,6 +5,9 @@
  */
 
 #include "vma_internal.h"
+
+#include <linux/page_size_compat.h>
+
 #include "vma.h"
 
 struct mmap_state {
@@ -2970,7 +2973,7 @@ unsigned long unmapped_area(struct vm_unmapped_area_info *info)
 	VMA_ITERATOR(vmi, current->mm, 0);
 
 	/* Adjust search length to account for worst case alignment overhead */
-	length = info->length + info->align_mask + info->start_gap;
+	length = __PAGE_SIZE_ROUND_UP_ADJ(info->length + info->align_mask + info->start_gap);
 	if (length < info->length)
 		return -ENOMEM;
 
@@ -3007,7 +3010,7 @@ retry:
 		}
 	}
 
-	return gap;
+	return __PAGE_ALIGN(gap);
 }
 
 /**
@@ -3028,7 +3031,7 @@ unsigned long unmapped_area_topdown(struct vm_unmapped_area_info *info)
 	VMA_ITERATOR(vmi, current->mm, 0);
 
 	/* Adjust search length to account for worst case alignment overhead */
-	length = info->length + info->align_mask + info->start_gap;
+	length = __PAGE_SIZE_ROUND_UP_ADJ(info->length + info->align_mask + info->start_gap);
 	if (length < info->length)
 		return -ENOMEM;
 
@@ -3060,7 +3063,7 @@ retry:
 		}
 	}
 
-	return gap;
+	return __PAGE_ALIGN(gap);
 }
 
 /*
