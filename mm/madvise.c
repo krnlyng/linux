@@ -12,6 +12,7 @@
 #include <linux/mempolicy.h>
 #include <linux/page_size_compat.h>
 #include <linux/page-isolation.h>
+#include <linux/pgsize_migration.h>
 #include <linux/page_idle.h>
 #include <linux/userfaultfd_k.h>
 #include <linux/hugetlb.h>
@@ -856,6 +857,8 @@ static long madvise_dontneed_single_vma(struct madvise_behavior *madv_behavior)
 	struct zap_details details = {
 		.reclaim_pt = true,
 	};
+
+	madvise_vma_pad_pages(madv_behavior->vma, range->start, range->end);
 
 	zap_vma_range_batched(madv_behavior->tlb, madv_behavior->vma,
 			      range->start, range->end - range->start, &details);
