@@ -14,6 +14,7 @@
 #include <linux/swapops.h>
 #include <linux/pagemap.h>
 #include <linux/folio_batch.h>
+#include <linux/pgsize_migration.h>
 #include <linux/pagewalk.h>
 #include <linux/mempolicy.h>
 #include <linux/syscalls.h>
@@ -509,7 +510,7 @@ static int mlock_fixup(struct vma_iterator *vmi, struct vm_area_struct *vma,
 	    vma_flags_test(&old_vma_flags, VMA_LOCKED_BIT)) {
 		/* No work to do, and mlocking twice would be wrong */
 		vma_start_write(vma);
-		vma->flags = new_vma_flags;
+		vma->flags = new_vma_pad_fixup_flags(vma, newflags);
 	} else {
 		mlock_vma_pages_range(vma, start, end, &new_vma_flags);
 	}
