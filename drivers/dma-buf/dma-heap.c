@@ -14,6 +14,7 @@
 #include <linux/export.h>
 #include <linux/list.h>
 #include <linux/nospec.h>
+#include <linux/page_size_compat.h>
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
 #include <linux/xarray.h>
@@ -65,7 +66,7 @@ static int dma_heap_buffer_alloc(struct dma_heap *heap, size_t len,
 	 * Allocations from all heaps have to begin
 	 * and end on page boundaries.
 	 */
-	len = PAGE_ALIGN(len);
+	len = __PAGE_ALIGN(len);
 	if (!len)
 		return -EINVAL;
 
