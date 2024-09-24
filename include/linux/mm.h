@@ -29,6 +29,7 @@
 #include <linux/overflow.h>
 #include <linux/sched.h>
 #include <linux/pgtable.h>
+#include <linux/pgsize_migration_inline.h>
 #include <linux/kasan.h>
 #include <linux/memremap.h>
 #include <linux/slab.h>
@@ -993,13 +994,15 @@ static inline void vm_flags_reset(struct vm_area_struct *vma,
 {
 	VM_WARN_ON_ONCE(!pgtable_supports_soft_dirty() && (flags & VM_SOFTDIRTY));
 	vma_assert_write_locked(vma);
+	/* Preserve padding flags */
+	flags = vma_pad_fixup_flags(vma, flags);
 	vm_flags_init(vma, flags);
 }
 
 static inline void vma_flags_reset_once(struct vm_area_struct *vma,
 					vma_flags_t *flags)
 {
-	const unsigned long word = flags->__vma_flags[0];
+	const unsigned long word = vma_pad_fixup_flags(vma, flags->__vma_flags[0]);
 
 	/* It is assumed only the first system word must be written once. */
 	vma_flags_overwrite_word_once(&vma->flags, word);
