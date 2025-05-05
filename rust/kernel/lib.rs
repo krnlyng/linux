@@ -18,6 +18,24 @@
 //
 // Stable since Rust 1.89.0.
 #![feature(generic_arg_infer)]
+// Stable since Rust 1.79.0.
+#![feature(generic_nonzero)]
+#![feature(asm_goto)]
+#![feature(inline_const)]
+#![feature(pointer_is_aligned)]
+//
+// Stable since Rust 1.81.0.
+#![feature(lint_reasons)]
+//
+// Stable since Rust 1.82.0.
+#![feature(raw_ref_op)]
+//
+// Stable since Rust 1.83.0.
+#![feature(const_maybe_uninit_as_mut_ptr)]
+#![feature(const_mut_refs)]
+#![feature(const_option)]
+#![feature(const_ptr_write)]
+#![feature(const_refs_to_cell)]
 //
 // Expected to become stable.
 #![feature(arbitrary_self_types)]
@@ -124,6 +142,7 @@ pub mod of;
 #[cfg(CONFIG_PM_OPP)]
 pub mod opp;
 pub mod page;
+pub mod page_size_compat;
 #[cfg(CONFIG_PCI)]
 pub mod pci;
 pub mod pid_namespace;
