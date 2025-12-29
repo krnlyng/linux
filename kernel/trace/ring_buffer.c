@@ -6,6 +6,7 @@
  */
 #include <linux/ring_buffer_types.h>
 #include <linux/sched/isolation.h>
+#include <linux/page_size_compat_defs.h>
 #include <linux/trace_recursion.h>
 #include <linux/panic_notifier.h>
 #include <linux/trace_events.h>
@@ -2702,7 +2703,7 @@ struct trace_buffer *__ring_buffer_alloc(unsigned long size, unsigned flags,
 					struct lock_class_key *key)
 {
 	/* Default buffer page size - one system page */
-	return alloc_buffer(size, flags, 0, 0, 0, 0, key, NULL);
+	return alloc_buffer(size, flags, get_order(__PAGE_SIZE), 0, 0, 0, key, NULL);
 
 }
 EXPORT_SYMBOL_GPL(__ring_buffer_alloc);
