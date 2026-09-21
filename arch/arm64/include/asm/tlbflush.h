@@ -677,7 +677,7 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 
 	dsb(ishst);
 	__flush_s1_tlb_range_op(vaale1is, start, pages, stride, 0,
-				TLBI_TTL_UNKNOWN, tg, page_shift);
+				TLBI_TTL_UNKNOWN, tg, PAGE_SHIFT);
 	__tlbi_sync_s1ish_kernel();
 	isb();
 }
