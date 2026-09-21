@@ -63,19 +63,34 @@ static inline void cpu_switch_mm(pgd_t *pgd, struct mm_struct *mm)
 }
 
 /*
- * Ensure TCR.T0SZ is set to the provided value.
+ * TCR.T0SZ value to use when the ID map is active.
  */
-static inline void __cpu_set_tcr_t0sz(unsigned long t0sz)
+#define idmap_t0sz	TCR_T0SZ(IDMAP_VA_BITS)
+
+/*
+ * __cpu_set_tcr_geometry - Update TCR_EL1 TG0 and T0SZ fields if changed
+ * @geometry: Target TCR_TG0_* | TCR_T0SZ(...) bitmask
+ */
+static inline void __cpu_set_tcr_geometry(unsigned long t0sz)
 {
 	unsigned long tcr = read_sysreg(tcr_el1);
 
-	if ((tcr & TCR_EL1_T0SZ_MASK) == t0sz)
+	if ((tcr & (TCR_EL1_TG0_MASK | TCR_EL1_T0SZ_MASK)) == t0sz)
 		return;
 
-	tcr &= ~TCR_EL1_T0SZ_MASK;
+	tcr &= ~(TCR_EL1_TG0_MASK | TCR_EL1_T0SZ_MASK);
 	tcr |= t0sz;
 	write_sysreg(tcr, tcr_el1);
 	isb();
+}
+
+/*
+ * Ensure TCR.T0SZ is set to the provided value, and TG0 matches the host
+ * kernel translation granule when installing kernel page tables in TTBR0.
+ */
+static inline void __cpu_set_tcr_t0sz(unsigned long t0sz)
+{
+	__cpu_set_tcr_geometry(TCR_TG0_KERNEL | t0sz);
 }
 
 /*
