@@ -60,15 +60,15 @@ static struct folio *anon_alloc_folio(struct vm_area_struct *vma,
 }
 
 static const struct vm_uffd_ops anon_uffd_ops = {
-	.can_userfault	= anon_can_userfault,
-	.alloc_folio	= anon_alloc_folio,
+       .can_userfault  = anon_can_userfault,
+       .alloc_folio    = anon_alloc_folio,
 };
 
-static const struct vm_uffd_ops *vma_uffd_ops(struct vm_area_struct *vma)
+const struct vm_uffd_ops *vma_uffd_ops(struct vm_area_struct *vma)
 {
-	if (vma_is_anonymous(vma))
-		return &anon_uffd_ops;
-	return vma->vm_ops->uffd_ops;
+       if (vma_is_anonymous(vma))
+               return &anon_uffd_ops;
+       return vma->vm_ops->uffd_ops;
 }
 
 static __always_inline
@@ -2088,41 +2088,6 @@ out:
 	VM_WARN_ON_ONCE(err > 0);
 	VM_WARN_ON_ONCE(!moved && !err);
 	return moved ? moved : err;
-}
-
-bool vma_can_userfault(struct vm_area_struct *vma, vm_flags_t vm_flags,
-		       bool wp_async)
-{
-	const struct vm_uffd_ops *ops = vma_uffd_ops(vma);
-
-	if (vma->vm_flags & (VM_DROPPABLE | VM_SHADOW_STACK))
-		return false;
-
-	if (!is_vm_hugetlb_page(vma) && (vma->vm_flags & VM_SPECIAL))
-		return false;
-
-	vm_flags &= __VM_UFFD_FLAGS;
-
-	/*
-	 * If WP is the only mode enabled and context is wp async, allow any
-	 * memory type.
-	 */
-	if (wp_async && (vm_flags == VM_UFFD_WP))
-		return true;
-
-	/* For any other mode reject VMAs that don't implement vm_uffd_ops */
-	if (!ops)
-		return false;
-
-	/*
-	 * If user requested uffd-wp but not enabled pte markers for
-	 * uffd-wp, then only anonymous memory is supported
-	 */
-	if (!uffd_supports_wp_marker() && (vm_flags & VM_UFFD_WP) &&
-	    !vma_is_anonymous(vma))
-		return false;
-
-	return ops->can_userfault(vma, vm_flags);
 }
 
 static void userfaultfd_set_vm_flags(struct vm_area_struct *vma,

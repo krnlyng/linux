@@ -116,6 +116,53 @@ struct vm_uffd_ops {
 	void (*filemap_remove)(struct folio *folio, struct vm_area_struct *vma);
 };
 
+const struct vm_uffd_ops *vma_uffd_ops(struct vm_area_struct *vma);
+
+static inline bool vma_can_userfault(struct vm_area_struct *vma,
+		       vm_flags_t vm_flags,
+		       bool wp_async)
+{
+	const struct vm_uffd_ops *ops = vma_uffd_ops(vma);
+
+	if (vma->vm_flags & (VM_DROPPABLE | VM_SHADOW_STACK))
+		return false;
+
+	if (!is_vm_hugetlb_page(vma) && (vma->vm_flags & VM_SPECIAL))
+		return false;
+
+       /*
+        * A 4KB compat task maps 4KB slices of 16KB shmem folios, which have a
+        * single folio lock: a UFFDIO_COPY holding the folio lock for one slice
+        * can deadlock against a fault on another slice of the same folio. Only
+        * anonymous memory userfaultfd is supported for 4KB compat tasks.
+        */
+        if (!vma_is_anonymous(vma) && p3s_4k_unsupported(vma->vm_mm))
+               return false;
+
+	vm_flags &= __VM_UFFD_FLAGS;
+
+	/*
+	 * If WP is the only mode enabled and context is wp async, allow any
+	 * memory type.
+	 */
+	if (wp_async && (vm_flags == VM_UFFD_WP))
+		return true;
+
+	/* For any other mode reject VMAs that don't implement vm_uffd_ops */
+	if (!ops)
+		return false;
+
+	/*
+	 * If user requested uffd-wp but not enabled pte markers for
+	 * uffd-wp, then only anonymous memory is supported
+	 */
+	if (!uffd_supports_wp_marker() && (vm_flags & VM_UFFD_WP) &&
+	    !vma_is_anonymous(vma))
+		return false;
+
+	return ops->can_userfault(vma, vm_flags);
+}
+
 /* A combined operation mode + behavior flags. */
 typedef unsigned int __bitwise uffd_flags_t;
 
@@ -238,9 +285,6 @@ static inline bool userfaultfd_armed(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & __VM_UFFD_FLAGS;
 }
-
-bool vma_can_userfault(struct vm_area_struct *vma, vm_flags_t vm_flags,
-		       bool wp_async);
 
 static inline bool vma_has_uffd_without_event_remap(struct vm_area_struct *vma)
 {
