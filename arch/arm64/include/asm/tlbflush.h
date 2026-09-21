@@ -14,6 +14,7 @@
 #include <linux/mm_types.h>
 #include <linux/sched.h>
 #include <linux/mmu_notifier.h>
+#include <linux/p3s/mm.h>
 #include <asm/cputype.h>
 #include <asm/mmu.h>
 
@@ -80,6 +81,9 @@ static inline unsigned long get_trans_granule(void)
 	}
 }
 
+#define get_trans_granule_mm(mm) \
+	(mm_is_p3s_4k(mm) ? TLBI_TTL_TG_4K : get_trans_granule())
+
 #ifdef CONFIG_ARM64_ERRATUM_4193714
 
 extern cpumask_t sme_active_cpus;
@@ -129,69 +133,74 @@ static inline void sme_dvmsync_batch(void)
 #define TLBI_TTL_MASK		GENMASK_ULL(47, 44)
 
 #define TLBI_TTL_UNKNOWN	INT_MAX
-
+ 
 typedef void (*tlbi_op)(u64 arg);
 
 static __always_inline void vae1is(u64 arg)
 {
-	__tlbi(vae1is, arg);
-	__tlbi_user(vae1is, arg);
+       __tlbi(vae1is, arg);
+       __tlbi_user(vae1is, arg);
 }
 
 static __always_inline void vae2is(u64 arg)
 {
-	__tlbi(vae2is, arg);
+       __tlbi(vae2is, arg);
 }
 
 static __always_inline void vale1(u64 arg)
 {
-	__tlbi(vale1, arg);
-	__tlbi_user(vale1, arg);
+       __tlbi(vale1, arg);
+       __tlbi_user(vale1, arg);
 }
 
 static __always_inline void vale1is(u64 arg)
 {
-	__tlbi(vale1is, arg);
-	__tlbi_user(vale1is, arg);
+       __tlbi(vale1is, arg);
+       __tlbi_user(vale1is, arg);
 }
 
 static __always_inline void vale2is(u64 arg)
 {
-	__tlbi(vale2is, arg);
+       __tlbi(vale2is, arg);
 }
 
 static __always_inline void vaale1is(u64 arg)
 {
-	__tlbi(vaale1is, arg);
+       __tlbi(vaale1is, arg);
 }
 
 static __always_inline void ipas2e1(u64 arg)
 {
-	__tlbi(ipas2e1, arg);
+       __tlbi(ipas2e1, arg);
 }
 
 static __always_inline void ipas2e1is(u64 arg)
 {
-	__tlbi(ipas2e1is, arg);
+       __tlbi(ipas2e1is, arg);
+}
+
+static __always_inline void __tlbi_level_asid_tg(tlbi_op op, u64 addr, u32 level,
+                                             u16 asid, unsigned long tg)
+{
+       u64 arg = __TLBI_VADDR(addr, asid);
+
+       if (alternative_has_cap_unlikely(ARM64_HAS_ARMv8_4_TTL) && level <= 3) {
+               u64 ttl = level | (tg << 2);
+
+               FIELD_MODIFY(TLBI_TTL_MASK, &arg, ttl);
+       }
+       op(arg);
 }
 
 static __always_inline void __tlbi_level_asid(tlbi_op op, u64 addr, u32 level,
-					      u16 asid)
+                                             u16 asid)
 {
-	u64 arg = __TLBI_VADDR(addr, asid);
-
-	if (alternative_has_cap_unlikely(ARM64_HAS_ARMv8_4_TTL) && level <= 3) {
-		u64 ttl = level | (get_trans_granule() << 2);
-
-		FIELD_MODIFY(TLBI_TTL_MASK, &arg, ttl);
-	}
-
-	op(arg);
+    __tlbi_level_asid_tg(op, addr, level, asid, get_trans_granule());
 }
 
 static inline void __tlbi_level(tlbi_op op, u64 addr, u32 level)
 {
-	__tlbi_level_asid(op, addr, level, 0);
+       __tlbi_level_asid(op, addr, level, 0);
 }
 
 /*
@@ -515,16 +524,16 @@ static __always_inline void __flush_tlb_range_op(tlbi_op lop, tlbi_op rop,
 		scale--;
 		continue;
 invalidate_one:
-		__tlbi_level_asid(lop, addr, level, asid);
+		__tlbi_level_asid_tg(lop, addr, level, asid, tg);
 		addr += stride;
 	}
 }
 
-#define __flush_s1_tlb_range_op(op, start, pages, stride, asid, tlb_level) \
-	__flush_tlb_range_op(op, r##op, start, pages, stride, asid, tlb_level, lpa2_is_enabled())
+#define __flush_s1_tlb_range_op(op, start, pages, stride, asid, tlb_level, tg, page_shift) \
+	__flush_tlb_range_op(op, r##op, start, pages, stride, asid, tlb_level, lpa2_is_enabled(), tg, page_shift)
 
-#define __flush_s2_tlb_range_op(op, start, pages, stride, tlb_level) \
-	__flush_tlb_range_op(op, r##op, start, pages, stride, 0, tlb_level, kvm_lpa2_is_enabled())
+#define __flush_s2_tlb_range_op(op, start, pages, stride, tlb_level, tg, page_shift) \
+	__flush_tlb_range_op(op, r##op, start, pages, stride, 0, tlb_level, kvm_lpa2_is_enabled(), tg, page_shift)
 
 static inline bool __flush_tlb_range_limit_excess(unsigned long pages,
 						  unsigned long stride)
