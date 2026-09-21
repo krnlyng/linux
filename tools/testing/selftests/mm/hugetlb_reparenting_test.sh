@@ -56,6 +56,12 @@ else
   MB_DISPLAY=$MB
 fi
 
+# Check if hugetlb allocation is supported (e.g. 4KB compat mode disables hugetlb)
+if ! ./write_to_hugetlbfs -p /tmp/hugetlb_test_probe -s "$((MB * 1024 * 1024))" -m 1 2>/dev/null; then
+  echo "Hugetlb is unsupported or disabled in this configuration. Skipping..."
+  exit $ksft_skip
+fi
+
 function cleanup() {
   echo cleanup
   set +e
