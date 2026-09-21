@@ -39,6 +39,7 @@
 
 #include "internal.h"
 #include "swap.h"
+#include <linux/p3s_user_pages.h>
 
 #define __MADV_SET_ANON_VMA_NAME (-1)
 
@@ -523,7 +524,8 @@ restart:
 		 * number of pages, it must be exclusive.
 		 */
 		if (!folio_test_lru(folio) ||
-		    folio_mapcount(folio) != folio_nr_pages(folio))
+		    (folio_mapcount(folio) != folio_nr_pages(folio) &&
+		     !vma_folio_slices_exclusive(vma, folio)))
 			continue;
 
 		if (pageout_anon_only_filter && !folio_test_anon(folio))
@@ -1186,7 +1188,7 @@ static long madvise_guard_install(struct madvise_behavior *madv_behavior)
 
 		if (err == 0) {
 			unsigned long nr_expected_pages =
-				PHYS_PFN(range->end - range->start);
+				(range->end - range->start) >> PAGE_SHIFT;
 
 			VM_WARN_ON(nr_pages != nr_expected_pages);
 			return 0;
@@ -2039,6 +2041,7 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 static ssize_t vector_madvise(struct mm_struct *mm, struct iov_iter *iter,
 			      int behavior)
 {
+	P3S_CONTEXT_REMOTE_MM(mm);
 	ssize_t ret = 0;
 	size_t total_len;
 	struct mmu_gather tlb;
