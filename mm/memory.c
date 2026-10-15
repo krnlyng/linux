@@ -4344,18 +4344,17 @@ static inline void unmap_mapping_range_tree(struct rb_root_cached *root,
 					    struct zap_details *details)
 {
 	struct vm_area_struct *vma;
-	unsigned long start, size;
+	unsigned long start, end;
 	struct mmu_gather tlb;
 
 	vma_interval_tree_foreach(vma, root, first_index, last_index) {
-		const pgoff_t start_idx = max(first_index, vma->vm_pgoff);
-		const pgoff_t end_idx = min(last_index, vma_last_pgoff(vma)) + 1;
-
-		start = vma->vm_start + ((start_idx - vma->vm_pgoff) << PAGE_SHIFT);
-		size = (end_idx - start_idx) << PAGE_SHIFT;
+		vma_unmap_mapping_range_bounds(vma, first_index, last_index,
+					       &start, &end);
+		if (start >= end)
+			continue;
 
 		tlb_gather_mmu(&tlb, vma->vm_mm);
-		zap_vma_range_batched(&tlb, vma, start, size, details);
+		zap_vma_range_batched(&tlb, vma, start, end - start, details);
 		tlb_finish_mmu(&tlb);
 	}
 }
