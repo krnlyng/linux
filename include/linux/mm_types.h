@@ -905,6 +905,9 @@ struct vm_area_desc {
 
 	/* Mutable fields. Populated with initial state. */
 	pgoff_t pgoff;
+#ifdef CONFIG_ARM64_PER_PROCESS_PAGE_SIZE
+	unsigned short slice_off;	/* P3S: slice of the page at pgoff */
+#endif
 	struct file *vm_file;
 	vma_flags_t vma_flags;
 	pgprot_t page_prot;

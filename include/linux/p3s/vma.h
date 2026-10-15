@@ -236,6 +236,49 @@ static inline loff_t vma_file_offset_at(const struct vm_area_struct *vma,
 	return vma_file_offset(vma) + (addr - vma->vm_start);
 }
 
+#ifdef CONFIG_ARM64_PER_PROCESS_PAGE_SIZE
+static inline unsigned short vma_desc_slice_off(const struct vm_area_desc *desc)
+{
+	return mm_is_p3s_4k(desc->mm) ? desc->slice_off : 0;
+}
+
+static inline void vma_desc_set_slice_off(struct vm_area_desc *desc,
+					  unsigned short slice_off)
+{
+	desc->slice_off = slice_off;
+}
+#else
+static inline unsigned short vma_desc_slice_off(const struct vm_area_desc *desc)
+{
+	return 0;
+}
+
+static inline void vma_desc_set_slice_off(struct vm_area_desc *desc,
+					  unsigned short slice_off)
+{
+}
+#endif
+
+/*
+ * vma_desc_kernel_pages - vma_kernel_pages() for a VMA being set up by
+ * mmap_prepare, described by @desc. A macro, as vma_desc_size() is
+ * defined after this header is included.
+ */
+#define vma_desc_kernel_pages(desc)					\
+	mm_kernel_pages((desc)->mm, vma_desc_slice_off(desc) +		\
+			(vma_desc_size(desc) >> mm_pte_shift((desc)->mm)))
+
+/*
+ * vma_kernel_pages - Number of kernel pages that @vma maps slices of
+ * @vma: Pointer to struct vm_area_struct
+ *
+ * A 4KB compatibility VMA can start at any slice of a kernel page, so
+ * count its pages from slice 0 of the first kernel page. A macro, as
+ * vma_pages() is defined after this header is included.
+ */
+#define vma_kernel_pages(vma)						\
+	mm_kernel_pages((vma)->vm_mm, vma_slice_off(vma) + vma_pages(vma))
+
 /*
  * p3s_filemap_fault_check_eof - Check whether a file fault is past EOF
  * @vma: Pointer to struct vm_area_struct
