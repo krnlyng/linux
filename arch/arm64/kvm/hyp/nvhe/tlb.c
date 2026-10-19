@@ -220,7 +220,7 @@ void __kvm_tlb_flush_vmid_range(struct kvm_s2_mmu *mmu,
 	enter_vmid_context(mmu, &cxt, false);
 
 	__flush_s2_tlb_range_op(ipas2e1is, start, pages, stride,
-				TLBI_TTL_UNKNOWN);
+				TLBI_TTL_UNKNOWN, get_trans_granule(), __ffs(PAGE_SIZE));
 
 	dsb(ish);
 	__tlbi(vmalle1is);
