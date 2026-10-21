@@ -144,6 +144,15 @@ SYM_FUNC_START(cpu_do_resume)
 	/* Don't change t0sz here, mask those bits when restoring */
 	mrs	x7, tcr_el1
 	bfi	x8, x7, TCR_EL1_T0SZ_SHIFT, TCR_EL1_T0SZ_WIDTH
+#ifdef CONFIG_ARM64_PER_PROCESS_PAGE_SIZE
+	/*
+	 * Keep the kernel TG0 as well. If a 4KB P3S task was running when we
+	 * suspended, the saved TCR_EL1 has TG0=4KB, but we are still running
+	 * on the idmap, which uses the kernel granule. cpu_uninstall_idmap()
+	 * switches TG0 back via cpu_switch_mm() -> mm_switch_tcr().
+	 */
+	bfi	x8, x7, TCR_EL1_TG0_SHIFT, TCR_EL1_TG0_WIDTH
+#endif
 
 	msr	tcr_el1, x8
 	msr	vbar_el1, x9
