@@ -362,7 +362,7 @@ unsigned long drm_gem_dma_get_unmapped_area(struct file *filp,
 	drm_vma_offset_lock_lookup(dev->vma_offset_manager);
 	node = drm_vma_offset_exact_lookup_locked(dev->vma_offset_manager,
 						  pgoff,
-						  len >> PAGE_SHIFT);
+						  DIV_ROUND_UP(len, PAGE_SIZE));
 	if (likely(node)) {
 		obj = container_of(node, struct drm_gem_object, vma_node);
 		/*
