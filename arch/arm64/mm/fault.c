@@ -242,6 +242,10 @@ int __ptep_set_access_flags_anysz(struct vm_area_struct *vma,
 	 */
 	if (dirty) {
 		switch (pgsize) {
+#ifdef CONFIG_ARM64_PER_PROCESS_PAGE_SIZE
+		/* Last-level PTE of a 4KB compat address space */
+		case PAGE_SIZE_4KB:
+#endif
 		case PAGE_SIZE:
 			level = 3;
 			break;

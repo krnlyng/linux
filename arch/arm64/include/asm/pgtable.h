@@ -1258,7 +1258,7 @@ static inline int __ptep_set_access_flags(struct vm_area_struct *vma,
 					  pte_t entry, int dirty)
 {
 	return __ptep_set_access_flags_anysz(vma, address, ptep, entry, dirty,
-					     PAGE_SIZE);
+					     mm_pte_size(vma->vm_mm));
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
