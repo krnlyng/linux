@@ -8,6 +8,7 @@
 #include <linux/export.h>
 #include <asm/tlbflush.h>
 #include <asm/p3s/pgtable.h>
+#include <linux/p3s/vma.h>
 
 static inline bool mm_is_user(struct mm_struct *mm)
 {
@@ -527,11 +528,12 @@ bool contpte_test_and_clear_young_ptes(struct vm_area_struct *vma,
 	 * of the same large folio in a single VMA and a single page table.
 	 */
 
-	unsigned long end = addr + nr * PAGE_SIZE;
+	unsigned long pgsize = vma_page_size(vma);
+	unsigned long end = addr + nr * pgsize;
 	bool young = false;
 
 	ptep = contpte_align_addr_ptep(&addr, &end, ptep, nr);
-	for (; addr != end; ptep++, addr += PAGE_SIZE)
+	for (; addr != end; ptep++, addr += pgsize)
 		young |= __ptep_test_and_clear_young(vma, addr, ptep);
 
 	return young;
@@ -546,14 +548,15 @@ bool contpte_clear_flush_young_ptes(struct vm_area_struct *vma,
 	young = contpte_test_and_clear_young_ptes(vma, addr, ptep, nr);
 
 	if (young) {
-		unsigned long end = addr + nr * PAGE_SIZE;
+		unsigned long pgsize = vma_page_size(vma);
+		unsigned long end = addr + nr * pgsize;
 
 		contpte_align_addr_ptep(&addr, &end, ptep, nr);
 		/*
 		 * See comment in __ptep_clear_flush_young(); same rationale for
 		 * eliding the trailing DSB applies here.
 		 */
-		__flush_tlb_range(vma, addr, end, PAGE_SIZE, 3,
+		__flush_tlb_range(vma, addr, end, pgsize, 3,
 				  TLBF_NOWALKCACHE | TLBF_NOSYNC);
 	}
 
@@ -593,11 +596,12 @@ void contpte_clear_young_dirty_ptes(struct vm_area_struct *vma,
 	 * when it is covered by a single folio, we can get away with
 	 * clearing access/dirty for the whole block.
 	 */
+	unsigned long pgsize = vma_page_size(vma);
 	unsigned long start = addr;
-	unsigned long end = start + nr * PAGE_SIZE;
+	unsigned long end = start + nr * pgsize;
 
 	ptep = contpte_align_addr_ptep(&start, &end, ptep, nr);
-	__clear_young_dirty_ptes(vma, start, ptep, (end - start) / PAGE_SIZE, flags);
+	__clear_young_dirty_ptes(vma, start, ptep, (end - start) / pgsize, flags);
 }
 EXPORT_SYMBOL_GPL(contpte_clear_young_dirty_ptes);
 
