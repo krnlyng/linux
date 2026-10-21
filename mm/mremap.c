@@ -72,6 +72,7 @@ struct vma_remap_struct {
 	bool mmap_locked;		/* Is mm currently write-locked? */
 	unsigned long charged;		/* If VM_ACCOUNT, # pages to account. */
 	bool vmi_needs_invalidate;	/* Is the VMA iterator invalidated? */
+	bool p3s_copy;			/* P3S: copy instead of moving PTEs. */
 };
 
 static pud_t *get_old_pud(struct mm_struct *mm, unsigned long addr)
@@ -948,6 +949,97 @@ static bool vrm_implies_new_addr(struct vma_remap_struct *vrm)
  * Returns 0 on success (with vrm->new_addr updated), or an error code upon
  * failure.
  */
+/*
+ * p3s_mremap_can_copy - Can this move be done by copying the data?
+ *
+ * In a 4KB compatibility process the slice of an anonymous page follows from
+ * its address, so a move that changes the address within 16KB cannot move the
+ * PTEs (see mm_mremap_get_unmapped_area()). For private anonymous memory that
+ * is neither MTE tagged nor registered with userfaultfd, copy the data into
+ * new folios at the destination instead. Pinned pages are refused while
+ * copying.
+ */
+static bool p3s_mremap_can_copy(struct vma_remap_struct *vrm)
+{
+	struct vm_area_struct *vma = vrm->vma;
+
+	return mm_is_p3s_4k(vma->vm_mm) &&
+	       (vrm->flags & MREMAP_FIXED) &&
+	       !(vrm->flags & MREMAP_DONTUNMAP) &&
+	       vma_is_anonymous(vma) &&
+	       !(vma->vm_flags & (VM_SHARED | VM_MTE | VM_IO | VM_PFNMAP |
+				  VM_MIXEDMAP | VM_HUGETLB)) &&
+	       !userfaultfd_armed(vma);
+}
+
+/*
+ * p3s_mremap_copy_data - Copy a 4KB process's anonymous range to new_vma
+ *
+ * Used instead of move_page_tables() when the move changes the slice. The
+ * source keeps its pages, and move_vma() unmaps it afterwards as usual. Pages
+ * that were never written (the zero page) are left unpopulated in new_vma,
+ * which reads the same. Returns -EINVAL, as before this fallback existed, if a
+ * source page may be pinned for DMA, since a copy would not see later DMA
+ * writes.
+ */
+static int p3s_mremap_copy_data(struct vma_remap_struct *vrm,
+				struct vm_area_struct *new_vma)
+{
+	struct mm_struct *mm = new_vma->vm_mm;
+	struct vm_area_struct *vma = vrm->vma;
+	unsigned long off;
+
+	mmap_assert_write_locked(mm);
+	vma_start_write(new_vma);
+
+	for (off = 0; off < vrm->old_len; off += PAGE_SIZE_4KB) {
+		unsigned long old_addr = vrm->addr + off;
+		unsigned long new_addr = vrm->new_addr + off;
+		unsigned long old_off = (unsigned long)
+			vma_slice_offset(vma, old_addr) << PAGE_SHIFT_4KB;
+		unsigned long new_off = (unsigned long)
+			vma_slice_offset(new_vma, new_addr) << PAGE_SHIFT_4KB;
+		struct page *src, *dst;
+		void *s, *d;
+		long ret;
+
+		ret = get_user_pages_remote(mm, old_addr, 1, FOLL_FORCE, &src,
+					    NULL);
+		if (ret != 1)
+			return ret < 0 ? ret : -EFAULT;
+		if (is_zero_page(src)) {
+			put_page(src);
+			continue;
+		}
+		if (folio_maybe_dma_pinned(page_folio(src))) {
+			put_page(src);
+			return -EINVAL;
+		}
+
+		ret = get_user_pages_remote(mm, new_addr, 1,
+					    FOLL_WRITE | FOLL_FORCE, &dst, NULL);
+		if (ret != 1) {
+			put_page(src);
+			return ret < 0 ? ret : -EFAULT;
+		}
+
+		s = kmap_local_page(src);
+		d = kmap_local_page(dst);
+		/* Also keeps the I-cache coherent for executable mappings. */
+		copy_to_user_page(new_vma, dst, new_addr, d + new_off,
+				  s + old_off, PAGE_SIZE_4KB);
+		kunmap_local(d);
+		kunmap_local(s);
+
+		set_page_dirty_lock(dst);
+		put_page(dst);
+		put_page(src);
+		cond_resched();
+	}
+
+	return 0;
+}
+
 static unsigned long vrm_set_new_addr(struct vma_remap_struct *vrm)
 {
 	struct vm_area_struct *vma = vrm->vma;
@@ -955,6 +1047,7 @@ static unsigned long vrm_set_new_addr(struct vma_remap_struct *vrm)
 	/* Page Offset _into_ the VMA. */
 	pgoff_t pgoff = vma_pgoff_offset(vma, vrm->addr);
 	unsigned long new_addr = vrm_implies_new_addr(vrm) ? vrm->new_addr : 0;
+	bool can_copy = p3s_mremap_can_copy(vrm);
 	unsigned long res;
 
 	if (vrm->flags & MREMAP_FIXED)
@@ -964,11 +1057,12 @@ static unsigned long vrm_set_new_addr(struct vma_remap_struct *vrm)
 
 	res = mm_mremap_get_unmapped_area(vma->vm_file, new_addr, vrm->new_len,
 					  pgoff, map_flags, vrm->addr,
-					  vrm->flags);
+					  vrm->flags, can_copy);
 	if (IS_ERR_VALUE(res))
 		return res;
 
 	vrm->new_addr = res;
+	vrm->p3s_copy = can_copy && ((vrm->addr ^ res) & ~PAGE_MASK_KERNEL);
 	return 0;
 }
 
@@ -1281,6 +1375,20 @@ static int copy_vma_and_data(struct vma_remap_struct *vrm,
 	vrm->vma = vma;
 	pmc.old = vma;
 	pmc.new = new_vma;
+
+	if (unlikely(vrm->p3s_copy)) {
+		err = p3s_mremap_copy_data(vrm, new_vma);
+		if (err) {
+			/* The source is untouched: unmap the new area instead. */
+			vrm->vma = new_vma;
+			vrm->old_len = vrm->new_len;
+			vrm->addr = vrm->new_addr;
+		} else {
+			mremap_userfaultfd_prep(new_vma, vrm->uf);
+		}
+		*new_vma_ptr = new_vma;
+		return err;
+	}
 
 	moved_len = move_page_tables(&pmc);
 	if (moved_len < vrm->old_len)

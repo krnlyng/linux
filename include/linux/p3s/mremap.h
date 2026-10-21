@@ -59,18 +59,23 @@ unsigned long __get_unmapped_area(struct file *file, unsigned long addr,
  * MREMAP_FIXED users, MarkCompact::KernelPrepareRangeForUffd (2MB-aligned
  * ranges) and MemMap::ReplaceWith (16KB-aligned mmap() addresses), always
  * meet this.
+ *
+ * The exception is @can_copy: mremap() moves private anonymous memory to
+ * another slice by copying it (see p3s_mremap_copy_data()), which bionic's
+ * CFI shadow update (ShadowWrite in linker_cfi.cpp) relies on, so allow
+ * such an @addr.
  */
 static inline unsigned long mm_mremap_get_unmapped_area(struct file *file,
 		unsigned long addr, unsigned long len, unsigned long pgoff,
 		unsigned long map_flags, unsigned long old_addr,
-		unsigned long mremap_flags)
+		unsigned long mremap_flags, bool can_copy)
 {
 	if (mm_is_p3s_4k(current->mm)) {
 		unsigned int slice =
 			(old_addr >> PAGE_SHIFT_4KB) & P3S_SLICE_MASK;
 
 		if (mremap_flags & MREMAP_FIXED) {
-			if ((old_addr ^ addr) & ~PAGE_MASK_KERNEL)
+			if (((old_addr ^ addr) & ~PAGE_MASK_KERNEL) && !can_copy)
 				return -EINVAL;
 		} else if (slice || addr) {
 			unsigned long res;
