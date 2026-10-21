@@ -536,7 +536,8 @@ invalidate_one:
 	__flush_tlb_range_op(op, r##op, start, pages, stride, 0, tlb_level, kvm_lpa2_is_enabled(), tg, page_shift)
 
 static inline bool __flush_tlb_range_limit_excess(unsigned long pages,
-						  unsigned long stride)
+						  unsigned long stride,
+						  unsigned int page_shift)
 {
 	/*
 	 * Assume that the worst case number of DVM ops required to flush a
@@ -547,7 +548,8 @@ static inline bool __flush_tlb_range_limit_excess(unsigned long pages,
 	if (system_supports_tlb_range())
 		return pages > MAX_TLBI_RANGE_PAGES;
 
-	return pages >= (MAX_DVM_OPS * stride) >> PAGE_SHIFT;
+	/* @pages is counted in units of the address space's page size. */
+	return pages >= (MAX_DVM_OPS * stride) >> page_shift;
 }
 
 typedef unsigned __bitwise tlbf_t;
@@ -579,7 +581,7 @@ static __always_inline void __do_flush_tlb_range(struct vm_area_struct *vma,
 
 	pages = (end - start) >> page_shift;
 
-	if (__flush_tlb_range_limit_excess(pages, stride)) {
+	if (__flush_tlb_range_limit_excess(pages, stride, page_shift)) {
 		flush_tlb_mm(mm);
 		return;
 	}
@@ -670,7 +672,7 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 	end = round_up(end, stride);
 	pages = (end - start) >> PAGE_SHIFT;
 
-	if (__flush_tlb_range_limit_excess(pages, stride)) {
+	if (__flush_tlb_range_limit_excess(pages, stride, PAGE_SHIFT)) {
 		flush_tlb_all();
 		return;
 	}
