@@ -97,6 +97,12 @@ struct vma_merge_struct {
 	unsigned long start;
 	unsigned long end;
 	pgoff_t pgoff;
+	/*
+	 * P3S: the 4KB slice of file page pgoff that start maps, for a file
+	 * range in a 4KB compatibility process. A new range can be mapped
+	 * (MAP_FIXED) at an address whose slice differs from this one.
+	 */
+	unsigned short slice_off;
 
 	union {
 		/* Temporary while VMA flags are being converted. */
@@ -267,6 +273,7 @@ static inline bool vmg_can_merge_offsets(struct vma_merge_struct *vmg, bool merg
 		.end = end_,					\
 		.vm_flags = vma_->vm_flags,			\
 		.pgoff = vma_pgoff_offset(vma_, start_),	\
+		.slice_off = vma_slice_offset(vma_, start_),	\
 		.file = vma_->vm_file,				\
 		.anon_vma = vma_->anon_vma,			\
 		.policy = vma_policy(vma_),			\

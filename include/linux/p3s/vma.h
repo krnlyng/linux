@@ -639,10 +639,22 @@ static inline void vma_set_range_slice(struct vm_area_struct *vma,
 				       unsigned long start, unsigned long end,
 				       pgoff_t pgoff)
 {
+	/*
+	 * Take the slice at @start from the old range, before vm_start
+	 * changes: once vm_start is @start, vma_slice_offset() just returns
+	 * the old vm_slice_off. When a merge expands @vma downwards (a new
+	 * range merging into the VMA after it), @start is below the old
+	 * vm_start; the merge checked that the range continues into @vma, so
+	 * counting back from the old start gives its slice. The unsigned
+	 * difference wraps, but it is a multiple of 4KB, so its low slice
+	 * bits are still right.
+	 */
+	unsigned short slice_off = vma_slice_offset(vma, start);
+
 	vma->vm_start = start;
 	vma->vm_end = end;
 	vma->vm_pgoff = pgoff;
-	vma_set_slice_off(vma, vma_slice_offset(vma, start));
+	vma_set_slice_off(vma, slice_off);
 }
 
 /*
